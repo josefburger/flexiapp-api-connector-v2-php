@@ -1,0 +1,6 @@
+[
+    {"id": 1, "name": "Mount Teide", "perex": "Highest peak of Spain.", "content": "<p>Volcano.</p>", "valid": true, "validFrom": "2025-02-01T00:00:00+01:00", "publishedAt": "2025-02-01T00:00:00+01:00", "topics": [{"id": 10, "name": "Travel"}]},
+    {"id": 2, "name": "Banana plantation", "perex": "Sweet ending.", "content": "<p>Bananas.</p>", "valid": true, "validFrom": "2025-02-20T00:00:00+01:00", "publishedAt": "2025-02-20T00:00:00+01:00", "topics": [{"id": 10, "name": "Travel"}, {"id": 11, "name": "Food"}]},
+    {"id": 3, "name": "Draft article", "perex": "", "content": "", "valid": false, "validFrom": null, "publishedAt": "2025-03-01T10:00:00+01:00", "topics": []},
+    {"id": 4, "name": "Garachico", "perex": "Coffee by the sea.", "content": "<p>Town.</p>", "valid": true, "validFrom": "2025-01-15T00:00:00+01:00", "publishedAt": "2025-01-15T00:00:00+01:00", "topics": [{"id": 11, "name": "Food"}]}
+]

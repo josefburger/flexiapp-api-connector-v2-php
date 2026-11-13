@@ -1,0 +1,17 @@
+# Keep the package archive small: only src/, composer.json, README, LICENSE and CHANGELOG.
+/.github           export-ignore
+/examples          export-ignore
+/tests             export-ignore
+/.editorconfig     export-ignore
+/.gitattributes    export-ignore
+/.gitignore        export-ignore
+/phpunit.xml.dist  export-ignore
+/vendor            export-ignore
+/composer.lock     export-ignore
+/.phpunit.cache    export-ignore
+/phpstan.neon.dist  export-ignore
+/SECURITY.md       export-ignore
+# local editor and assistant folders (ignored by git, but keep them out of path installs too)
+/.idea             export-ignore
+/.junie            export-ignore
+/.vscode           export-ignore

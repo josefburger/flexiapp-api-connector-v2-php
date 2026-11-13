@@ -1,0 +1,23 @@
+/vendor/
+/composer.lock
+/.phpunit.cache/
+.DS_Store
+.idea/
+.junie/
+.vscode/
+
+# AI asistenti a jejich konfigurace
+.claude/
+CLAUDE.md
+CLAUDE.local.md
+AGENTS.md
+.cursor/
+.cursorrules
+.windsurf/
+.windsurfrules
+.aider*
+.continue/
+.codex/
+.gemini/
+GEMINI.md
+.github/copilot-instructions.md

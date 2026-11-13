@@ -1,0 +1,47 @@
+{
+    "name": "flexiapp/api-connector-v2",
+    "description": "PHP connector for the FlexiApp headless CMS REST API v2: read access, file cache with outage fallback and cache-flush webhooks.",
+    "type": "library",
+    "license": "MIT",
+    "keywords": [
+        "flexiapp",
+        "cms",
+        "headless-cms",
+        "api",
+        "client",
+        "webhooks"
+    ],
+    "homepage": "https://api.flexiapp.cz/v2/docs",
+    "authors": [
+        {
+            "name": "Josef Burger"
+        }
+    ],
+    "require": {
+        "php": ">=8.2",
+        "ext-curl": "*"
+    },
+    "require-dev": {
+        "phpstan/phpstan": "^2.1",
+        "phpunit/phpunit": "^11.5"
+    },
+    "autoload": {
+        "psr-4": {
+            "FlexiApp\\ApiV2\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "FlexiApp\\ApiV2\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit",
+        "test:live": "phpunit --group live",
+        "analyse": "phpstan analyse"
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "stable"
+}
