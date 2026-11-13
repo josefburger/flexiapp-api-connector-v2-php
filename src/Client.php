@@ -24,9 +24,11 @@ use FlexiApp\ApiV2\Http\TransportInterface;
  * With a cache, successful responses are stored and reused while fresh.
  * When the API is temporarily unavailable (network error, 408, 429, 5xx),
  * the last stored response is returned even if it has expired; the
- * exception is thrown only when there is nothing cached. After the first
- * such failure the instance stops calling the API, so a page with several
- * requests does not wait for a timeout on each of them.
+ * exception is thrown only when there is nothing cached. After such a
+ * failure the instance does not call the API for `$outageRetryAfter` seconds
+ * (30 by default), so a page with several requests does not wait for a
+ * timeout on each of them, while a long-running process (worker, cron)
+ * gets back to the API once it recovers.
  */
 final class Client
 {
@@ -49,12 +51,16 @@ final class Client
     /** The temporary failure that put the API out of use for this instance. */
     private ?ApiException $outage = null;
 
+    /** When {@see $outage} happened, {@see hrtime()} in nanoseconds (monotonic, unaffected by clock changes). */
+    private int $outageAt = 0;
+
     /**
-     * @param string                  $apiKey    project API key (`fxa_v2_…`)
-     * @param CacheInterface|null     $cache     response cache, null to disable caching
-     * @param TransportInterface|null $transport HTTP transport, {@see CurlTransport} by default
-     * @param string                  $baseUrl   API root without `/v2`
-     * @param string                  $userAgent your application, e.g. `example.com`; prepended to the library's own User-Agent
+     * @param string                  $apiKey           project API key (`fxa_v2_…`)
+     * @param CacheInterface|null     $cache            response cache, null to disable caching
+     * @param TransportInterface|null $transport        HTTP transport, {@see CurlTransport} by default
+     * @param string                  $baseUrl          API root without `/v2`
+     * @param string                  $userAgent        your application, e.g. `example.com`; prepended to the library's own User-Agent
+     * @param int                     $outageRetryAfter seconds after a temporary failure during which the API is not called again
      */
     public function __construct(
         #[\SensitiveParameter] private readonly string $apiKey,
@@ -62,6 +68,7 @@ final class Client
         ?TransportInterface $transport = null,
         private readonly string $baseUrl = self::DEFAULT_BASE_URL,
         private readonly string $userAgent = '',
+        private readonly int $outageRetryAfter = 30,
     ) {
         $this->transport = $transport ?? new CurlTransport();
     }
@@ -92,8 +99,8 @@ final class Client
             return $stale;
         }
 
-        // The API already failed during this request: do not wait for it again.
-        if ($this->outage !== null) {
+        // The API failed a moment ago: do not wait for it again until the retry interval passes.
+        if ($this->outage !== null && hrtime(true) - $this->outageAt < $this->outageRetryAfter * 1_000_000_000) {
             return $stale ?? throw $this->outage;
         }
 
@@ -104,14 +111,16 @@ final class Client
                 throw $e;
             }
             $this->outage = $e;
+            $this->outageAt = hrtime(true);
             if ($stale === null) {
                 throw $e;
             }
-            error_log('FlexiApp: ' . $e->getMessage() . '; serving cached responses until the end of the request.');
+            error_log('FlexiApp: ' . $e->getMessage() . '; serving cached responses for ' . $this->outageRetryAfter . ' s.');
 
             return $stale;
         }
 
+        $this->outage = null;
         $this->cache?->set($cacheKey, $data);
 
         return $data;

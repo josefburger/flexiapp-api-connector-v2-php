@@ -4,7 +4,7 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.0.0] - 2026-11-13
 
 ### Added
 
@@ -15,5 +15,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - `Webhook` signature verification (Standard Webhooks) and a ready-made
   `WebhookHandler` that clears the cache on `cache.flush`.
 - `FixtureTransport` for development and tests without an API key.
-- After a temporary API failure the client answers the rest of the request
-  from the cache instead of waiting for a timeout on every call.
+- After a temporary API failure the client answers from the cache for 30
+  seconds (`outageRetryAfter`) instead of waiting for a timeout on every call.
+
+[1.0.0]: https://github.com/josefburger/flexiapp-api-connector-v2-php/releases/tag/v1.0.0

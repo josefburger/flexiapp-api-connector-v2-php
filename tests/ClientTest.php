@@ -175,6 +175,21 @@ final class ClientTest extends TestCase
         self::assertCount(1, $transport->requests);
     }
 
+    public function testCallsApiAgainAfterRetryInterval(): void
+    {
+        $cache = new FileCache($this->cacheDir, ttl: -1);
+        (new Client('key', $cache, (new FakeTransport())->willReturn(['id' => 1])))->find('articles', 1);
+
+        $transport = (new FakeTransport())
+            ->willFail(new ApiException('timeout'))
+            ->willReturn(['id' => 1, 'name' => 'Fresh']);
+        $client = new Client('key', $cache, $transport, outageRetryAfter: 0);
+
+        self::assertSame(['id' => 1], $client->find('articles', 1)); // failure: served from cache
+        self::assertSame(['id' => 1, 'name' => 'Fresh'], $client->find('articles', 1)); // interval passed: API again
+        self::assertCount(2, $transport->requests);
+    }
+
     public function testCacheIsSeparatedByBaseUrl(): void
     {
         $cache = new FileCache($this->cacheDir);

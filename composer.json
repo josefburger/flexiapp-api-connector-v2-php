@@ -12,6 +12,11 @@
         "webhooks"
     ],
     "homepage": "https://api.flexiapp.cz/v2/docs",
+    "support": {
+        "issues": "https://github.com/josefburger/flexiapp-api-connector-v2-php/issues",
+        "source": "https://github.com/josefburger/flexiapp-api-connector-v2-php",
+        "docs": "https://api.flexiapp.cz/v2/docs"
+    },
     "authors": [
         {
             "name": "Josef Burger"

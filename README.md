@@ -111,10 +111,11 @@ $client = new Client('fxa_v2_…', $cache);
 - On a temporary failure (network, 408, 429, 5xx) the client falls back to the
   last stored response, even an expired one. Other errors (400, 401, 403, 404)
   are always thrown.
-- After such a failure the client does not call the API again for the rest of
-  its life (one PHP request in a typical website): further calls are answered
-  from the cache at once, or fail at once when nothing is cached, instead of
-  waiting for a timeout each time.
+- After such a failure the client does not call the API for 30 seconds
+  (`outageRetryAfter:` in the constructor): further calls are answered from the
+  cache at once, or fail at once when nothing is cached, instead of waiting for
+  a timeout each time. A long-running process (worker, cron) then gets back to
+  the API on its own.
 - Entries are keyed by the API root and key, so several projects or
   environments can share one directory.
 - `$client->bypassCache()` makes all further calls ask the API (responses are
