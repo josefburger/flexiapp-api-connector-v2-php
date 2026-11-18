@@ -100,6 +100,18 @@ try {
 }
 ```
 
+## Correlation ID
+
+Each `Client` generates a random ID and sends it with all its requests in the
+`X-Correlation-Id` header. The API statistics in the FlexiApp administration
+use it to group the requests of one page load (requests per page, N+1
+problems), so create one client per page load. To use an ID of your own
+(e.g. a request ID your application already logs, or a new one per job in a
+long-running worker), pass `correlationId:` to the constructor or call
+`setCorrelationId()`; `correlationId()` returns the current value. Allowed are
+1–64 characters of `A-Z a-z 0-9 . _ : -`, anything else throws
+`InvalidArgumentException`.
+
 ## Caching
 
 ```php

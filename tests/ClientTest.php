@@ -7,6 +7,7 @@ namespace FlexiApp\ApiV2\Tests;
 use FlexiApp\ApiV2\ApiException;
 use FlexiApp\ApiV2\Cache\FileCache;
 use FlexiApp\ApiV2\Client;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 final class ClientTest extends TestCase
@@ -251,5 +252,82 @@ final class ClientTest extends TestCase
 
         self::assertSame('ok', (new Client('', transport: $transport))->status());
         self::assertArrayNotHasKey('Authorization', $transport->requests[0]['headers']);
+    }
+
+    public function testSendsOneGeneratedCorrelationIdWithAllRequests(): void
+    {
+        $transport = (new FakeTransport())->willReturn(['id' => 1])->willReturn(['id' => 2])->willReturn(['status' => 'ok']);
+        $client = new Client('key', transport: $transport);
+
+        $client->project();
+        $client->find('articles', 2);
+        $client->status();
+
+        self::assertMatchesRegularExpression('/\A[0-9a-f]{16}\z/', $client->correlationId());
+        self::assertSame(
+            array_fill(0, 3, $client->correlationId()),
+            array_map(static fn (array $request): string => $request['headers']['X-Correlation-Id'], $transport->requests),
+        );
+    }
+
+    public function testEachClientGeneratesItsOwnCorrelationId(): void
+    {
+        self::assertNotSame((new Client('key'))->correlationId(), (new Client('key'))->correlationId());
+    }
+
+    public function testUsesCorrelationIdFromConstructor(): void
+    {
+        $transport = (new FakeTransport())->willReturn(['id' => 1]);
+        $client = new Client('key', transport: $transport, correlationId: 'req-42.web:1_A');
+
+        $client->project();
+
+        self::assertSame('req-42.web:1_A', $client->correlationId());
+        self::assertSame('req-42.web:1_A', $transport->requests[0]['headers']['X-Correlation-Id']);
+    }
+
+    public function testSetCorrelationIdAppliesToFurtherRequests(): void
+    {
+        $transport = (new FakeTransport())->willReturn(['id' => 1])->willReturn(['id' => 1]);
+        $client = new Client('key', transport: $transport, correlationId: 'first');
+
+        $client->project();
+        $client->setCorrelationId(str_repeat('x', 64));
+        $client->project();
+
+        self::assertSame('first', $transport->requests[0]['headers']['X-Correlation-Id']);
+        self::assertSame(str_repeat('x', 64), $transport->requests[1]['headers']['X-Correlation-Id']);
+        self::assertSame(str_repeat('x', 64), $client->correlationId());
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function invalidCorrelationIds(): iterable
+    {
+        yield 'empty' => [''];
+        yield 'too long' => [str_repeat('a', 65)];
+        yield 'space' => ['page 1'];
+        yield 'slash' => ['a/b'];
+        yield 'trailing newline' => ["abc\n"];
+        yield 'non-ASCII' => ['čtení'];
+    }
+
+    #[DataProvider('invalidCorrelationIds')]
+    public function testRejectsInvalidCorrelationIdInConstructor(string $correlationId): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        new Client('key', transport: new FakeTransport(), correlationId: $correlationId);
+    }
+
+    #[DataProvider('invalidCorrelationIds')]
+    public function testRejectsInvalidCorrelationIdInSetterAndKeepsPreviousValue(string $correlationId): void
+    {
+        $client = new Client('key', transport: new FakeTransport(), correlationId: 'kept');
+
+        try {
+            $client->setCorrelationId($correlationId);
+            self::fail('Expected InvalidArgumentException.');
+        } catch (\InvalidArgumentException) {
+            self::assertSame('kept', $client->correlationId());
+        }
     }
 }

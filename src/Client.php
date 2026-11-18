@@ -29,6 +29,9 @@ use FlexiApp\ApiV2\Http\TransportInterface;
  * (30 by default), so a page with several requests does not wait for a
  * timeout on each of them, while a long-running process (worker, cron)
  * gets back to the API once it recovers.
+ *
+ * Every request carries an `X-Correlation-Id` header, generated once per
+ * instance, so the API statistics can group the requests of one page load.
  */
 final class Client
 {
@@ -42,7 +45,12 @@ final class Client
     /** Safety limit for {@see all()}: 1000 pages of 100 items. */
     private const MAX_PAGES = 1000;
 
+    /** Values the API accepts in `X-Correlation-Id` (others are ignored by the API, so the client rejects them). */
+    private const CORRELATION_ID_PATTERN = '/\A[A-Za-z0-9._:-]{1,64}\z/';
+
     private readonly TransportInterface $transport;
+
+    private string $correlationId;
 
     private int $requestCount = 0;
 
@@ -61,6 +69,9 @@ final class Client
      * @param string                  $baseUrl          API root without `/v2`
      * @param string                  $userAgent        your application, e.g. `example.com`; prepended to the library's own User-Agent
      * @param int                     $outageRetryAfter seconds after a temporary failure during which the API is not called again
+     * @param string|null             $correlationId    `X-Correlation-Id` sent with every request (1–64 of `A-Z a-z 0-9 . _ : -`), random by default
+     *
+     * @throws \InvalidArgumentException for an invalid correlation ID
      */
     public function __construct(
         #[\SensitiveParameter] private readonly string $apiKey,
@@ -69,8 +80,10 @@ final class Client
         private readonly string $baseUrl = self::DEFAULT_BASE_URL,
         private readonly string $userAgent = '',
         private readonly int $outageRetryAfter = 30,
+        ?string $correlationId = null,
     ) {
         $this->transport = $transport ?? new CurlTransport();
+        $this->correlationId = self::checkCorrelationId($correlationId ?? bin2hex(random_bytes(8)));
     }
 
     /**
@@ -220,6 +233,25 @@ final class Client
         return $this->requestCount;
     }
 
+    /** The `X-Correlation-Id` sent with the requests of this instance. */
+    public function correlationId(): string
+    {
+        return $this->correlationId;
+    }
+
+    /**
+     * Sets the `X-Correlation-Id` for all further requests, e.g. one per job
+     * in a long-running worker, or an ID your application already logs.
+     *
+     * @param string $correlationId 1–64 characters of `A-Z a-z 0-9 . _ : -`
+     *
+     * @throws \InvalidArgumentException for an invalid value
+     */
+    public function setCorrelationId(string $correlationId): void
+    {
+        $this->correlationId = self::checkCorrelationId($correlationId);
+    }
+
     /**
      * Builds a query string the way the API expects it: arrays become
      * repeated parameters without brackets, booleans `true`/`false`, and
@@ -260,6 +292,7 @@ final class Client
         $headers = [
             'Accept' => 'application/json',
             'User-Agent' => ltrim($this->userAgent . ' flexiapp-api-connector-v2-php/' . self::VERSION),
+            'X-Correlation-Id' => $this->correlationId,
         ];
         if ($authenticate) {
             $headers['Authorization'] = 'Bearer ' . $this->apiKey;
@@ -268,6 +301,15 @@ final class Client
         $this->requestCount++;
 
         return $this->transport->get(rtrim($this->baseUrl, '/') . $url, $headers);
+    }
+
+    private static function checkCorrelationId(string $correlationId): string
+    {
+        if (preg_match(self::CORRELATION_ID_PATTERN, $correlationId) !== 1) {
+            throw new \InvalidArgumentException('Invalid correlation ID: use 1–64 characters of A-Z a-z 0-9 . _ : -');
+        }
+
+        return $correlationId;
     }
 
     /** @return array<mixed> */
