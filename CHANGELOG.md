@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- `FileCache` moves an entry written by 1.0 under the new file name the first
+  time it is read, so later reads find it at once and partial flushes know
+  its resource.
+
 ## [1.1.0] - 2026-11-18
 
 ### Added

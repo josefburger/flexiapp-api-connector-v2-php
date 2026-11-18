@@ -96,20 +96,44 @@ final class FileCacheTest extends TestCase
         self::assertNotNull($cache->get('k /v2/topics'));
     }
 
-    public function testReadsAndClearsEntriesWrittenByVersion10(): void
+    public function testReadsEntriesWrittenByVersion10AndMovesThemUnderNewName(): void
     {
         $key = 'k /v2/articles/42';
-        mkdir($this->dir);
-        file_put_contents($this->dir . '/flexiapp-' . sha1($key) . '.json', (string) json_encode(['storedAt' => time() - 100000, 'key' => $key, 'value' => ['id' => 42]]));
+        $this->writeVersion10Entry($key, ['id' => 42], time() - 100000);
         $cache = new FileCache($this->dir);
 
         $item = $cache->get($key);
         self::assertNotNull($item);
         self::assertSame(['id' => 42], $item->value);
         self::assertFalse($item->fresh);
+        self::assertSame(['flexiapp-articles-' . sha1($key) . '.json'], array_map('basename', glob($this->dir . '/*') ?: []));
 
+        $again = $cache->get($key);
+        self::assertNotNull($again);
+        self::assertSame($item->storedAt, $again->storedAt);
+
+        // now the resource is known: other scopes keep it, its own scope drops it
         $cache->clearScopes(['sites']);
+        self::assertNotNull($cache->get($key));
+        $cache->clearScopes(['articles']);
         self::assertNull($cache->get($key));
+    }
+
+    public function testClearScopesRemovesUnreadEntriesWrittenByVersion10(): void
+    {
+        $key = 'k /v2/articles/42';
+        $this->writeVersion10Entry($key, ['id' => 42], time());
+
+        (new FileCache($this->dir))->clearScopes(['sites']);
+
+        self::assertSame([], glob($this->dir . '/*'));
+    }
+
+    /** @param array<mixed> $value */
+    private function writeVersion10Entry(string $key, array $value, int $storedAt): void
+    {
+        @mkdir($this->dir);
+        file_put_contents($this->dir . '/flexiapp-' . sha1($key) . '.json', (string) json_encode(['storedAt' => $storedAt, 'key' => $key, 'value' => $value]));
     }
 
     public function testClearScopesRemovesLeftoverTemporaryFiles(): void

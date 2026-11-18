@@ -41,9 +41,24 @@ final class FileCache implements ScopedCacheInterface
 
     public function get(string $key): ?CacheItem
     {
-        // 1.0 stored files without the scope in the name; still read them, so
-        // an upgrade keeps the warm cache and its outage fallback.
-        return $this->read($this->file($key)) ?? $this->read($this->legacyFile($key));
+        $file = $this->file($key);
+        $item = $this->read($file);
+        if ($item !== null) {
+            return $item;
+        }
+
+        // 1.0 stored files without the scope in the name. Read them, so an
+        // upgrade keeps the warm cache and its outage fallback, and move them
+        // under the new name, so the next read finds them at once and
+        // clearScopes() knows their resource. On a miss this costs one extra
+        // file check, next to the API request that follows it anyway.
+        $legacy = $this->legacyFile($key);
+        $item = $this->read($legacy);
+        if ($item !== null) {
+            @rename($legacy, $file); // atomic; a concurrent request may have moved it already
+        }
+
+        return $item;
     }
 
     public function set(string $key, mixed $value): void

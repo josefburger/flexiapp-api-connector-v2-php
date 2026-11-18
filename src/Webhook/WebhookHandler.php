@@ -28,7 +28,14 @@ use FlexiApp\ApiV2\Cache\ScopedCacheInterface;
  */
 final class WebhookHandler
 {
-    /** Scopes FlexiApp may send; anything else means "clear everything". */
+    /**
+     * Scopes FlexiApp may send; anything else means "clear everything".
+     *
+     * `project` is deliberately missing: FlexiApp never sends it. Project
+     * settings show up across the whole website, so a project change comes
+     * without `scopes` and clears everything; should a `project` scope ever
+     * arrive, clearing everything is the right reaction too.
+     */
     public const KNOWN_SCOPES = ['articles', 'products', 'profiles', 'gallery-images', 'sites', 'topics', 'web-parts'];
 
     /**
@@ -117,6 +124,9 @@ final class WebhookHandler
     private function flush(WebhookEvent $event): void
     {
         $scopes = $this->scopesToFlush($event);
+        // scopesToFlush() returns scopes only for a ScopedCacheInterface; the
+        // instanceof check repeats it on purpose, so the types are known here
+        // and a future change there falls back to a full flush, never to an error.
         if ($scopes === null || !$this->cache instanceof ScopedCacheInterface) {
             $this->cache?->clear();
 

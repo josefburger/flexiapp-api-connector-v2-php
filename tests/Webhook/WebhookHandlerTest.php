@@ -121,6 +121,15 @@ final class WebhookHandlerTest extends TestCase
         self::assertSame([], $this->cachedScopes());
     }
 
+    public function testProjectScopeClearsEverything(): void
+    {
+        $this->warmUp();
+
+        (new WebhookHandler($this->webhook, $this->cache))->handle(...$this->request('cache.flush', 'auto', ['project']));
+
+        self::assertSame([], $this->cachedScopes());
+    }
+
     public function testPartialFlushCanBeTurnedOff(): void
     {
         $this->warmUp();
