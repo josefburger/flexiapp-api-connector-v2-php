@@ -35,7 +35,7 @@ use FlexiApp\ApiV2\Http\TransportInterface;
  */
 final class Client
 {
-    public const VERSION = '1.0.0';
+    public const VERSION = '1.1.0';
 
     public const DEFAULT_BASE_URL = 'https://api.flexiapp.cz';
 

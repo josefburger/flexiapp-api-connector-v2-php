@@ -50,6 +50,84 @@ final class FileCacheTest extends TestCase
         self::assertSame(86400, FileCache::DEFAULT_TTL);
     }
 
+    public function testScopeComesFromApiPath(): void
+    {
+        self::assertSame('articles', FileCache::scopeOf('abc123 /v2/articles?filter=valid%3Aeq%3Atrue'));
+        self::assertSame('articles', FileCache::scopeOf('abc123 /v2/articles/42'));
+        self::assertSame('web-parts', FileCache::scopeOf('abc123 /v2/web-parts'));
+        self::assertSame('project', FileCache::scopeOf('abc123 /v2/project'));
+        self::assertSame('other', FileCache::scopeOf('custom key'));
+    }
+
+    public function testClearScopesKeepsOtherResources(): void
+    {
+        $cache = new FileCache($this->dir);
+        $cache->set('k /v2/articles?page=0', 'list');
+        $cache->set('k /v2/articles/42', 'detail');
+        $cache->set('k /v2/topics', 'topics');
+        $cache->set('k /v2/project', 'project');
+
+        self::assertSame(2, $cache->clearScopes(['articles', '../*', 'articles']));
+        self::assertNull($cache->get('k /v2/articles?page=0'));
+        self::assertNull($cache->get('k /v2/articles/42'));
+        self::assertNotNull($cache->get('k /v2/topics'));
+        self::assertNotNull($cache->get('k /v2/project'));
+    }
+
+    public function testClearScopesMatchesResourceNameExactly(): void
+    {
+        $cache = new FileCache($this->dir);
+        $cache->set('k /v2/web/1', 'web');
+        $cache->set('k /v2/web-parts', 'web parts');
+
+        self::assertSame(1, $cache->clearScopes(['web']));
+        self::assertNotNull($cache->get('k /v2/web-parts'));
+    }
+
+    public function testClearScopesAlsoRemovesEntriesOfUnknownResource(): void
+    {
+        $cache = new FileCache($this->dir);
+        $cache->set('custom key', 'other');
+        $cache->set('k /v2/topics', 'topics');
+
+        $cache->clearScopes(['articles']);
+
+        self::assertNull($cache->get('custom key'));
+        self::assertNotNull($cache->get('k /v2/topics'));
+    }
+
+    public function testReadsAndClearsEntriesWrittenByVersion10(): void
+    {
+        $key = 'k /v2/articles/42';
+        mkdir($this->dir);
+        file_put_contents($this->dir . '/flexiapp-' . sha1($key) . '.json', (string) json_encode(['storedAt' => time() - 100000, 'key' => $key, 'value' => ['id' => 42]]));
+        $cache = new FileCache($this->dir);
+
+        $item = $cache->get($key);
+        self::assertNotNull($item);
+        self::assertSame(['id' => 42], $item->value);
+        self::assertFalse($item->fresh);
+
+        $cache->clearScopes(['sites']);
+        self::assertNull($cache->get($key));
+    }
+
+    public function testClearScopesRemovesLeftoverTemporaryFiles(): void
+    {
+        $cache = new FileCache($this->dir);
+        $cache->set('k /v2/topics', 'topics');
+        $old = $this->dir . '/flexiapp-articles-' . sha1('x') . '.json.abcd1234.tmp';
+        $fresh = $this->dir . '/flexiapp-articles-' . sha1('y') . '.json.abcd1234.tmp';
+        file_put_contents($old, '{');
+        file_put_contents($fresh, '{');
+        touch($old, time() - 3600);
+
+        $cache->clearScopes(['articles']);
+
+        self::assertFileDoesNotExist($old);
+        self::assertFileExists($fresh); // may still be written right now
+    }
+
     public function testClearRemovesOnlyOwnEntries(): void
     {
         $cache = new FileCache($this->dir);

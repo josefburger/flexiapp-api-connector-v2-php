@@ -22,10 +22,11 @@ $handler = new WebhookHandler(
     new FileCache(__DIR__ . '/../var/cache/flexiapp'),
 );
 
-// Optional: react to events yourself, e.g. log every flush.
-$handler->on(WebhookEvent::CACHE_FLUSH, static function (WebhookEvent $event): void {
+// Optional: react to events yourself, e.g. log what every flush cleared.
+$handler->on(WebhookEvent::CACHE_FLUSH, static function (WebhookEvent $event) use ($handler): void {
     $reason = $event->data['reason'] ?? '-';
-    error_log("FlexiApp cache flush ({$reason}), message {$event->id}");
+    $cleared = $event->isTest() ? 'nothing' : implode(', ', $handler->scopesToFlush($event) ?? ['everything']);
+    error_log("FlexiApp cache flush ({$reason}), cleared: {$cleared}, message {$event->id}");
 });
 
 $handler->handleRequest();

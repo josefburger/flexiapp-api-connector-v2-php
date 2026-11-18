@@ -23,6 +23,28 @@ final class WebhookEvent
     ) {
     }
 
+    /**
+     * Parts of the cache a `cache.flush` concerns (`articles`, `topics`…), or
+     * null when the whole cache should go. FlexiApp sends them only for
+     * automatic flushes after small changes (at most two values).
+     *
+     * @return list<string>|null
+     */
+    public function scopes(): ?array
+    {
+        $scopes = $this->data['scopes'] ?? null;
+        if (!is_array($scopes) || $scopes === []) {
+            return null;
+        }
+        foreach ($scopes as $scope) {
+            if (!is_string($scope) || $scope === '') {
+                return null; // malformed: be safe and flush everything
+            }
+        }
+
+        return array_values(array_unique($scopes));
+    }
+
     /** `cache.flush` sent by the "Test" action in the administration; it needs no work. */
     public function isTest(): bool
     {

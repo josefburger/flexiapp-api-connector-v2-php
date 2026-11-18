@@ -42,7 +42,7 @@ try {
         echo "\nPerex of #{$first['id']}: " . ($detail['perex'] ?? '') . "\n";
     }
 
-    echo "\nHTTP requests sent: {$client->requestCount()}\n";
+    echo "\nHTTP requests sent: {$client->requestCount()} (correlation ID {$client->correlationId()})\n";
 } catch (ApiException $e) {
     fwrite(STDERR, 'FlexiApp error: ' . $e->getMessage() . "\n");
     exit(1);

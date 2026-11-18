@@ -10,6 +10,8 @@ A small, dependency-free PHP client for reading content from the
   of an error page.
 - **Webhooks**: signature verification ([Standard Webhooks](https://www.standardwebhooks.com))
   and a ready-made endpoint that clears the cache when content changes.
+- **Request statistics**: a correlation ID on every request lets the FlexiApp
+  administration group the requests of one page load.
 - **Sample data** transport for development and tests without an API key.
 
 > 🇨🇿 [Česká verze níže](#česky)
@@ -134,7 +136,8 @@ $client = new Client('fxa_v2_…', $cache);
   still stored), e.g. for previews of unpublished content.
 - `$client->requestCount()` tells how many HTTP requests the page needed.
 - Pass `null` instead of a cache to disable caching, or implement
-  `CacheInterface` for another storage.
+  `CacheInterface` for another storage. Implement `ScopedCacheInterface`
+  (adds `clearScopes()`) if it should support partial flushes from webhooks.
 
 To use another HTTP stack (or a test double), implement
 `Http\TransportInterface` and pass it as `transport:`. The default
@@ -143,8 +146,10 @@ redirects, so the API key cannot leak to another address.
 
 The cache directory must be writable by PHP. If it is not, the client keeps
 working without a cache and logs a warning. Files are named
-`flexiapp-*.json` and `clear()` removes only those, but a dedicated directory
-is still the safest choice.
+`flexiapp-<resource>-<hash>.json` (`flexiapp-articles-….json`) and `clear()`
+removes only `flexiapp-*` files, but a dedicated directory is still the
+safest choice. `clearScopes(['articles'])` drops the responses of one resource
+(plus entries whose resource is unknown, e.g. custom keys without `/v2/…`).
 
 ## Webhooks
 
@@ -178,6 +183,29 @@ including event types it does not know. Clearing the cache is idempotent, so
 repeated deliveries are harmless. Extra work can be attached with
 `$handler->on('cache.flush', fn (WebhookEvent $event) => …)`; keep it fast,
 FlexiApp waits at most 10 seconds.
+
+### Partial flush
+
+After a small automatic change FlexiApp names the affected parts of the
+cache in `data.scopes` (at most two of `articles`, `products`, `profiles`,
+`gallery-images`, `sites`, `topics`, `web-parts`). The handler then clears
+only those resources and the rest of the cache stays warm:
+
+| Event | Cleared |
+|---|---|
+| `scopes: ["articles"]` | article responses only |
+| `scopes: ["products"]` | product responses only; articles stay (their `products` part holds just IDs) |
+| `scopes: ["topics"]` | topics **and** articles, products, profiles and gallery images, which embed their topics (`id`, `name`, `urlPart`) |
+| no `scopes` (manual flush, larger change, project settings) | everything |
+| an unknown scope, or a cache without `ScopedCacheInterface` | everything |
+
+Responses are cached per resource exactly as the API returned them, so
+dropping one resource is safe. If your application builds its own caches
+from several resources (e.g. rendered pages), clear them in a listener, or turn
+partial flushes off with `new WebhookHandler($webhook, $cache, partialFlush: false)`.
+In a listener, `$handler->scopesToFlush($event)` tells what the handler cleared
+(with dependent resources, `null` = everything); `$event->scopes()` is only
+what FlexiApp sent.
 
 To verify requests in your own code, use `Webhook::verify($rawBody, $headers)`.
 It returns a `WebhookEvent` or throws `WebhookException`.
@@ -227,6 +255,8 @@ Malý PHP klient bez závislostí pro čtení obsahu z headless CMS
 - Souborovou cache s nastavitelnou délkou (výchozí 24 hodin). Při výpadku API
   vrátí poslední známou odpověď místo chybové stránky.
 - Webhooky: ověření podpisu a hotový endpoint, který při změně obsahu smaže cache.
+- Statistiky požadavků: každý požadavek nese correlation ID, podle kterého
+  administrace FlexiApp seskupí požadavky jednoho načtení stránky.
 - Ukázková data ze souborů pro vývoj a testy bez API klíče.
 
 **Instalace a použití**
@@ -242,6 +272,17 @@ $clanky = $client->list('articles', ['filter' => 'valid:eq:true', 'sort' => 'pub
 $clanek = $client->find('articles', 42);   // null, když neexistuje
 ```
 
+**Correlation ID**
+
+Každý `Client` si vygeneruje náhodné ID a posílá ho se všemi požadavky
+v hlavičce `X-Correlation-Id`. Statistiky API v administraci FlexiApp podle
+něj seskupí požadavky jednoho načtení stránky (počet požadavků na stránku,
+problémy N+1), proto na jedno načtení stránky vytvářejte jednoho klienta.
+Vlastní ID (např. ID požadavku z vaší aplikace) předejte jako
+`correlationId:` v konstruktoru nebo přes `setCorrelationId()`, aktuální
+hodnotu vrátí `correlationId()`. Povoleno je 1–64 znaků `A-Z a-z 0-9 . _ : -`,
+jiná hodnota vyhodí `InvalidArgumentException`.
+
 **Webhook pro mazání cache**
 
 1. Vytvořte endpoint (viz [příklad](examples/webhook-endpoint.php)), který
@@ -253,5 +294,10 @@ $clanek = $client->find('articles', 42);   // null, když neexistuje
 FlexiApp pak cache smaže sám po každé změně obsahu (dávkově, zpravidla do
 10 minut) i po ručním *Vyprázdnit cache*. Cache tak může držet dlouho a obsah
 se přesto objeví rychle.
+
+Po menší automatické změně FlexiApp pošle i `scopes` (např. jen `articles`)
+a smažou se jen odpovědi daného zdroje, zbytek cache zůstane. Změna témat
+smaže i články, produkty, profily a obrázky galerie, protože v sobě témata obsahují.
+Bez `scopes` nebo s neznámou hodnotou se maže všechno.
 
 Podrobnosti jsou v anglické části výše.

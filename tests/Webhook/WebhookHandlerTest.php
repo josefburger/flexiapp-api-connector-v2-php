@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace FlexiApp\ApiV2\Tests\Webhook;
 
+use FlexiApp\ApiV2\Cache\CacheInterface;
+use FlexiApp\ApiV2\Cache\CacheItem;
 use FlexiApp\ApiV2\Cache\FileCache;
 use FlexiApp\ApiV2\Webhook\Webhook;
 use FlexiApp\ApiV2\Webhook\WebhookEvent;
@@ -78,13 +80,116 @@ final class WebhookHandlerTest extends TestCase
         self::assertSame(['manual'], $received);
     }
 
-    /** @return array{0: string, 1: array<string, string>} */
-    private function request(string $type, ?string $reason = null): array
+    public function testScopesClearOnlyChangedResources(): void
+    {
+        $this->warmUp();
+
+        (new WebhookHandler($this->webhook, $this->cache))->handle(...$this->request('cache.flush', 'auto', ['articles']));
+
+        self::assertSame(['products', 'project', 'sites', 'topics'], $this->cachedScopes());
+    }
+
+    public function testTopicChangeAlsoClearsDocumentsThatEmbedTopics(): void
+    {
+        $this->warmUp();
+
+        (new WebhookHandler($this->webhook, $this->cache))->handle(...$this->request('cache.flush', 'auto', ['topics', 'sites']));
+
+        self::assertSame(['project'], $this->cachedScopes());
+    }
+
+    public function testScopesToFlushReportsWhatIsCleared(): void
+    {
+        $handler = new WebhookHandler($this->webhook, $this->cache);
+        $event = static fn (?array $scopes): WebhookEvent => new WebhookEvent('msg_1', 'cache.flush', '', array_filter(['reason' => 'auto', 'scopes' => $scopes]));
+
+        self::assertSame(['articles'], $handler->scopesToFlush($event(['articles'])));
+        self::assertSame(['topics', 'articles', 'products', 'profiles', 'gallery-images'], $handler->scopesToFlush($event(['topics'])));
+        self::assertSame(['articles', 'topics', 'products', 'profiles', 'gallery-images'], $handler->scopesToFlush($event(['articles', 'topics'])));
+        self::assertNull($handler->scopesToFlush($event(['articles', 'menus'])));
+        self::assertNull($handler->scopesToFlush($event(null)));
+        self::assertNull((new WebhookHandler($this->webhook, $this->cache, partialFlush: false))->scopesToFlush($event(['articles'])));
+        self::assertNull((new WebhookHandler($this->webhook))->scopesToFlush($event(['articles'])));
+    }
+
+    public function testUnknownScopeClearsEverything(): void
+    {
+        $this->warmUp();
+
+        (new WebhookHandler($this->webhook, $this->cache))->handle(...$this->request('cache.flush', 'auto', ['articles', 'menus']));
+
+        self::assertSame([], $this->cachedScopes());
+    }
+
+    public function testPartialFlushCanBeTurnedOff(): void
+    {
+        $this->warmUp();
+
+        (new WebhookHandler($this->webhook, $this->cache, partialFlush: false))->handle(...$this->request('cache.flush', 'auto', ['articles']));
+
+        self::assertSame([], $this->cachedScopes());
+    }
+
+    public function testCacheWithoutScopesIsClearedCompletely(): void
+    {
+        $cache = new class () implements CacheInterface {
+            public int $cleared = 0;
+
+            public function get(string $key): ?CacheItem
+            {
+                return null;
+            }
+
+            public function set(string $key, mixed $value): void
+            {
+            }
+
+            public function clear(): int
+            {
+                $this->cleared++;
+
+                return 0;
+            }
+        };
+
+        (new WebhookHandler($this->webhook, $cache))->handle(...$this->request('cache.flush', 'auto', ['articles']));
+
+        self::assertSame(1, $cache->cleared);
+    }
+
+    private function warmUp(): void
+    {
+        $this->cache->clear();
+        foreach (['articles?page=0', 'articles/42', 'products', 'topics', 'sites', 'project'] as $path) {
+            $this->cache->set('key /v2/' . $path, ['cached' => $path]);
+        }
+    }
+
+    /** @return list<string> resources that still have cached responses */
+    private function cachedScopes(): array
+    {
+        $scopes = [];
+        foreach (['articles?page=0', 'articles/42', 'products', 'topics', 'sites', 'project'] as $path) {
+            if ($this->cache->get('key /v2/' . $path) !== null) {
+                $scopes[] = FileCache::scopeOf('key /v2/' . $path);
+            }
+        }
+        sort($scopes);
+
+        return array_values(array_unique($scopes));
+    }
+
+    /**
+     * @param list<string>|null $scopes
+     *
+     * @return array{0: string, 1: array<string, string>}
+     */
+    private function request(string $type, ?string $reason = null, ?array $scopes = null): array
     {
         $payload = (string) json_encode([
             'type' => $type,
             'timestamp' => gmdate('Y-m-d\TH:i:s\Z'),
-            'data' => array_filter(['projectId' => 1, 'reason' => $reason]),
+            'data' => array_filter(['projectId' => 1, 'reason' => $reason, 'scopes' => $scopes]),
         ]);
         $id = 'msg_' . bin2hex(random_bytes(12));
         $time = time();
